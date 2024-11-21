@@ -4,6 +4,8 @@ import Head from './components/Head';
 import LandingPage from './components/LandingPage';
 import GetStarted from './components/GetStarted';
 import TripDetails from './components/TripDetails';
+// import AImodel from '/services/AImodel';
+
 
 
 function App() {

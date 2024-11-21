@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { getFirestore, collection, addDoc } from "firebase/firestore";
-import { app } from "../firebase";
-import HerePlacesAutocomplete from "./HerePlacesAutocomplete";
 import { useNavigate } from "react-router-dom";
+import HerePlacesAutocomplete from "./HerePlacesAutocomplete";
+import { generateTripDetails } from "../services/AImodel";  // Import the correct function
 import "./GetStarted.css";
 
-const db = getFirestore(app);
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=AIzaSyCQBPHCdEXQsLdKtxKxbhD17NSDEwjrVcY";
 
 const GetStarted = () => {
   const [budget, setBudget] = useState("");
@@ -28,46 +27,55 @@ const GetStarted = () => {
   const generateTrip = () => {
     if (!source || !destination) {
       alert("Please select both source and destination.");
-      return;
+      return null;
     }
-
+  
     if (days > 29) {
       alert("Maximum days to travel is 29");
-      return;
+      return null;
     }
-
-    const tripDetails = {
-      budget: budget || "Not specified",
-      companion: companion || "Not specified",
-      days: days || "Not specified",
-      source,
-      destination,
-      peopleCount: companion === "Family" || companion === "Friends" ? peopleCount : "Not applicable",
+  
+    // Payload formatted for Gemini API
+    return {
+      contents: [
+        {
+          parts: [
+            {
+              text: `Plan a trip from ${source} to ${destination} for ${days} days. Budget: ${budget || "Not specified"}. Companion: ${companion || "Not specified"}. ${
+                peopleCount ? `People: ${peopleCount}.` : ""
+              }`,
+            },
+          ],
+        },
+      ],
     };
-
-    console.log("Generated Trip Details: ", tripDetails);
-
-    return tripDetails;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     const tripDetails = generateTrip();
     if (!tripDetails) return;
 
-    // Save trip details to Firebase
-    try {
-      await addDoc(collection(db, "tripDetails"), tripDetails);
-      alert("Trip details saved to Firebase successfully!");
+    console.log("Request payload:", tripDetails); // Debug: Log the payload to verify
 
-      navigate({
-        pathname: "/tripdetails",
-        state: { tripDetails: tripDetails },
+    try {
+      const response = await fetch(GEMINI_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tripDetails),
       });
+
+      if (!response.ok) {
+        const errorDetails = await response.text();
+        throw new Error(`API responded with status ${response.status}: ${errorDetails}`);
+      }
+
+      const apiData = await response.json();
+      console.log("API Response:", apiData);
+      navigate("/tripdetails", { state: { tripData: apiData } });
     } catch (err) {
       setError(`Error: ${err.message}`);
-      console.error("Firebase Error:", err);
+      console.error("API Error:", err);
     }
   };
 
@@ -75,36 +83,41 @@ const GetStarted = () => {
     <div className="get-started-container">
       <h2>Plan Your Trip</h2>
       <form onSubmit={handleSubmit} className="trip-form">
+        {/* Budget Selection */}
         <div className="form-group">
           <label>Budget:</label>
           <div className="options-container">
             {["Low", "Medium", "High"].map((level) => (
-              <div
+              <button
                 key={level}
+                type="button"
                 className={`option-box ${budget === level ? "selected" : ""}`}
                 onClick={() => setBudget(level)}
               >
                 {level}
-              </div>
+              </button>
             ))}
           </div>
         </div>
 
+        {/* Companion Selection */}
         <div className="form-group">
           <label>Who are you traveling with?</label>
           <div className="options-container">
             {["Solo", "Family", "Friends", "Couple"].map((group) => (
-              <div
+              <button
                 key={group}
+                type="button"
                 className={`option-box ${companion === group ? "selected" : ""}`}
                 onClick={() => setCompanion(group)}
               >
                 {group}
-              </div>
+              </button>
             ))}
           </div>
         </div>
 
+        {/* Number of Days */}
         <div className="form-group">
           <label>Days of Travel:</label>
           <input
@@ -117,22 +130,19 @@ const GetStarted = () => {
           />
         </div>
 
+        {/* Source Location */}
         <div className="form-group">
           <label>Source Location:</label>
-          <HerePlacesAutocomplete
-            value={source}
-            onChange={handleSourceChange}
-          />
+          <HerePlacesAutocomplete value={source} onChange={handleSourceChange} />
         </div>
 
+        {/* Destination Location */}
         <div className="form-group">
           <label>Destination Location:</label>
-          <HerePlacesAutocomplete
-            value={destination}
-            onChange={handleDestinationChange}
-          />
+          <HerePlacesAutocomplete value={destination} onChange={handleDestinationChange} />
         </div>
 
+        {/* Number of People (Conditional) */}
         {(companion === "Family" || companion === "Friends") && (
           <div className="form-group">
             <label>Number of People:</label>
@@ -147,11 +157,13 @@ const GetStarted = () => {
           </div>
         )}
 
+        {/* Submit Button */}
         <button type="submit" className="submit-btn">
           Submit
         </button>
       </form>
 
+      {/* Error Message */}
       {error && (
         <div style={{ marginTop: "20px", color: "red" }}>
           <strong>{error}</strong>
